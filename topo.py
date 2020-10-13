@@ -19,7 +19,7 @@ class FatTreeTopo(Topo):
             pods = [{
                 "aggregation": [self.addSwitch('p%da%d' % (p,a),dpid="%02x:%02x:01" % (p,a+int(k/2))) for a in range(int(k/2))], 
                 "edge": [self.addSwitch('p%de%d' % (p,e),dpid="%02x:%02x:01" % (p,e)) for e in range(int(k/2))],
-                "hosts": [[self.addHost('p%de%dh%d' % (p,e,h),IP="1.1.1.1") for h in range(int(k/2))] for e in range(int(k/2))]
+                "hosts": [[self.addHost('p%de%dh%d' % (p,e,h),ip="11.%d.%d.%d/24" % (p,e,h+2)) for h in range(int(k/2))] for e in range(int(k/2))]
             } for p in range(k)]
 
             # Initialize links
@@ -40,13 +40,15 @@ class FatTreeTopo(Topo):
                     for i in range(int(k/2)):
                         self.addLink(agg,cores[(agg_idx*int(k/2))+i])
 
+topos = {'fattree': (lambda: FatTreeTopo())}
 
 class FatTreeNet(Mininet):
-    def __init__(self,k=8):
+    def __init__(self,k=4):
         Mininet.__init__(self,topo=FatTreeTopo(k),controller=Ryu)
 
 if __name__ == '__main__':
     net = FatTreeNet()
     net.start()
+    net.pingAll()
     CLI(net)
     net.stop()
