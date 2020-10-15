@@ -11,11 +11,11 @@ from ryu.lib.packet import ipv6
 from ryu.lib.packet import ether_types
 
 
-class SimpleSwitch(app_manager.RyuApp):
+class FatTreeSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(SimpleSwitch, self).__init__(*args, **kwargs)
+        super(FatTreeSwitch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
     def add_flow(self, datapath, in_port, dst, src, actions):
@@ -49,8 +49,8 @@ class SimpleSwitch(app_manager.RyuApp):
         dpid = datapath.id
         
         # Drop ipv6 packets
-        if ip6_pkt is not None:
-            return
+        #if ip6_pkt is not None:
+        #    return
 
         if ip_pkt is not None:
             print(ip_pkt.src,ip_pkt.dst,"%08x" % dpid)
@@ -59,27 +59,26 @@ class SimpleSwitch(app_manager.RyuApp):
             # ignore lldp packet
             return
         
-        self.mac_to_port.setdefault(dpid, {})
-        #self.logger.info("packet in %s %s %s %s", dpid, src, dst, msg.in_port)
-
         # learn a mac address to avoid FLOOD next time.
+        self.mac_to_port.setdefault(dpid, {})
         self.mac_to_port[dpid][src] = msg.in_port
 
+        # determine output port
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
         else:
             out_port = ofproto.OFPP_FLOOD
-
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
         if out_port != ofproto.OFPP_FLOOD:
+            print("Flow added",src,dst,datapath)
             self.add_flow(datapath, msg.in_port, dst, src, actions)
 
+        # send packet out
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
-
         out = datapath.ofproto_parser.OFPPacketOut(
             datapath=datapath, buffer_id=msg.buffer_id, in_port=msg.in_port,
             actions=actions, data=data)

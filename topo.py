@@ -31,24 +31,13 @@ class FatTreeTopo(Topo):
                         self.addLink(host,pod['edge'][host_group_idx])
                 
                 # Link edge to aggregation
-                for edge in pod['edge']:
-                    for agg in pod['aggregation']:
-                        self.addLink(edge,agg)
+                #for edge in pod['edge']:
+                #    for agg in pod['aggregation']:
+                #        self.addLink(edge,agg)
 
                 # Link edge to core
-                for agg_idx,agg in enumerate(pod['aggregation']):
-                    for i in range(int(k/2)):
-                        self.addLink(agg,cores[(agg_idx*int(k/2))+i])
+                #for agg_idx,agg in enumerate(pod['aggregation']):
+                #    for i in range(int(k/2)):
+                #        self.addLink(agg,cores[(agg_idx*int(k/2))+i])
 
 topos = {'fattree': (lambda: FatTreeTopo())}
-
-class FatTreeNet(Mininet):
-    def __init__(self,k=4):
-        Mininet.__init__(self,topo=FatTreeTopo(k),controller=Ryu)
-
-if __name__ == '__main__':
-    net = FatTreeNet()
-    net.start()
-    net.pingAll()
-    CLI(net)
-    net.stop()
