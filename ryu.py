@@ -14,16 +14,21 @@ from ryu.lib.packet import ether_types
 class FatTreeSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
+    k = 4
+
     def __init__(self, *args, **kwargs):
         super(FatTreeSwitch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-    def add_flow(self, datapath, in_port, dst, src, actions):
+    #def add_flow(self, datapath, in_port, actions, **kwargs):
+    def add_flow(self, datapath, in_port, actions, dst,src,ipv4_dst,ipv4_src):
         ofproto = datapath.ofproto
 
         match = datapath.ofproto_parser.OFPMatch(
+            nw_dst=ipv4_dst, nw_src=ipv4_src,
             in_port=in_port,
             dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src))
+        #match = datapath.ofproto_parser.OFPMatch(in_port=in_port,nw_dst=ipv4_dst)
 
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
@@ -47,33 +52,67 @@ class FatTreeSwitch(app_manager.RyuApp):
         src = eth.src
 
         dpid = datapath.id
-        
-        # Drop ipv6 packets
-        #if ip6_pkt is not None:
-        #    return
-
-        if ip_pkt is not None:
-            print(ip_pkt.src,ip_pkt.dst,"%08x" % dpid)
-
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
-            # ignore lldp packet
+      
+        # ignore lddp or ipv6 packets
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP or ip6_pkt is not None:#,ether_types.ETH_TYPE_IPV6):
             return
         
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port.setdefault(dpid, {})
         self.mac_to_port[dpid][src] = msg.in_port
 
-        # determine output port
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
+        # DPIDs are in the form ..:00:x:y:z
+        x = (dpid >> 16) & 15
+        y = (dpid >> 8) & 15
+        z = dpid & 15
+        
+        # Dest IP octets
+        if ip_pkt is not None:
+            octets = [int(o) for o in ip_pkt.dst.split('.')]
+            print("%02x" % dpid,ip_pkt.dst)
+            print(x,y,z,octets)
+
+        # if dest IP is on this switch
+        if dst in self.mac_to_port[dpid] and ip_pkt is not None and x == octets[1] and y == octets[2]:
+        #if ip_pkt is not None and x == octets[1] and y == octets[2]:
+            out_port = octets[-1] - 1
+            print("On this switch","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port,y)
+
+        # if dest IP is not on this switch
+        elif ip_pkt is not None:
+
+            # if this is a core switch
+            if x == self.k:
+                out_port = octets[1] + 1
+                print("Core going down","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
+
+            # if IP is in this pod and this is an aggregation switch
+            elif octets[1] == x and y >= int(self.k/2):
+                out_port = octets[2] + 1
+                print("Aggregation going down","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
+
+            # if dest IP is on a differnet switch
+            else:
+                # derive i from last octet of dest IP
+                i = octets[-1]
+
+                # calculate out_port using i,y,k
+                # this is the key to evenly distributing traffic load
+                out_port = int((i-2+y)%(self.k/2) + (self.k/2)) + 1
+                print("Beam me up","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
         else:
             out_port = ofproto.OFPP_FLOOD
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
+        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
         if out_port != ofproto.OFPP_FLOOD:
-            print("Flow added",src,dst,datapath)
-            self.add_flow(datapath, msg.in_port, dst, src, actions)
+            if ip_pkt is not None:
+                print(ip_pkt.dst)
+                self.add_flow(datapath, msg.in_port, actions, dst,src,ip_pkt.dst,ip_pkt.src)
+                #self.add_flow(datapath, msg.in_port, actions, dst,src)
+            #else:
+            #    self.add_flow(datapath,msg.in_port,actions,dl_src=haddr_to_bin(src),dl_dst=haddr_to_bin(dst))
+        else: return
 
         # send packet out
         data = None
