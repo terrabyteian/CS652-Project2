@@ -8,6 +8,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import ipv6
+from ryu.lib.packet import arp
 from ryu.lib.packet import ether_types
 
 
@@ -45,7 +46,8 @@ class FatTreeSwitch(app_manager.RyuApp):
         eth = pkt.get_protocol(ethernet.ethernet)
         ip_pkt = pkt.get_protocol(ipv4.ipv4)
         ip6_pkt = pkt.get_protocol(ipv6.ipv6)
-        
+        arp_pkt = pkt.get_protocol(arp.arp)
+
         dst = eth.dst
         src = eth.src
 
@@ -53,7 +55,7 @@ class FatTreeSwitch(app_manager.RyuApp):
         self.mac_to_port.setdefault(dpid, {})
       
         # ignore lddp or ipv6 packets
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP or ip6_pkt is not None:#,ether_types.ETH_TYPE_IPV6):
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP or ip6_pkt is not None:
             return
         
         # DPIDs are in the form ..:00:x:y:z
@@ -64,28 +66,26 @@ class FatTreeSwitch(app_manager.RyuApp):
         # collect dest ip octets
         if ip_pkt is not None:
             octets = [int(o) for o in ip_pkt.dst.split('.')]
-            print("%02x" % dpid,ip_pkt.dst)
-            print(x,y,z,octets)
-        
-        if dst in self.mac_to_port[dpid]:
-            if ip_pkt is not None and x == octets[1] and y == octets[2]:
-                out_port = octets[-1] - 1
-                print("On this switch","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port,y)
-            elif eth.ethertype == ether_types.ETH_TYPE_ARP and src in self.mac_to_port[dpid]:
-                out_port = self.mac_to_port[dpid][dst]
+        elif arp_pkt is not None:
+            octets = [int(o) for o in arp_pkt.dst_ip.split('.')]
+       
+        #if dst in self.mac_to_port[dpid]:
+        if (ip_pkt is not None or arp_pkt is not None) and x == octets[1] and y == octets[2]:
+             out_port = octets[-1] - 1
+             print(octets)
+        #else:
+        #    out_port = self.mac_to_port[dpid][dst]
 
         # if dest IP is not on this switch
-        elif ip_pkt is not None:
+        elif ip_pkt is not None or arp_pkt is not None:
 
             # if this is a core switch
             if x == self.k:
                 out_port = octets[1] + 1
-                print("Core going down","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
 
             # if IP is in this pod and this is an aggregation switch
             elif octets[1] == x and y >= int(self.k/2):
                 out_port = octets[2] + 1
-                print("Aggregation going down","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
 
             # if dest IP is on a differnet switch
             else:
@@ -95,21 +95,18 @@ class FatTreeSwitch(app_manager.RyuApp):
                 # calculate out_port using i,y,k
                 # this is the key to evenly distributing traffic load
                 out_port = int((i-2+y)%(self.k/2) + (self.k/2)) + 1
-                print("Beam me up","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
         else:
             out_port = ofproto.OFPP_FLOOD
-            print("The flood have breached",x,y,z)
+            print("The flood have breached",x,y,z,dst)
         
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = msg.in_port
 
         # install a flow to avoid packet_in next time
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
-        #if out_port != ofproto.OFPP_FLOOD:
-        #    if ip_pkt is not None:
-        #        self.add_flow(datapath, msg.in_port, actions, dst,src,ip_pkt.dst,ip_pkt.src)
-        #    else:
-        #        self.add_flow(datapath,msg.in_port,actions,dst,src)
+        if out_port != ofproto.OFPP_FLOOD:
+            if ip_pkt is not None:
+                self.add_flow(datapath, msg.in_port, actions, dst,src,ip_pkt.dst,ip_pkt.src)
 
         # send packet out
         data = None

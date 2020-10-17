@@ -36,8 +36,8 @@ class FatTreeTopo(Topo):
                         self.addLink(edge,agg)
 
                 # Link aggregation to core
-                #for agg_idx,agg in enumerate(pod['aggregation']):
-                #    for i in range(int(k/2)):
-                #        self.addLink(agg,cores[(agg_idx*int(k/2))+i])
+                for agg_idx,agg in enumerate(pod['aggregation']):
+                    for i in range(int(k/2)):
+                        self.addLink(agg,cores[(agg_idx*int(k/2))+i])
 
 topos = {'fattree': (lambda: FatTreeTopo())}
