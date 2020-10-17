@@ -20,15 +20,13 @@ class FatTreeSwitch(app_manager.RyuApp):
         super(FatTreeSwitch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-    #def add_flow(self, datapath, in_port, actions, **kwargs):
-    def add_flow(self, datapath, in_port, actions, dst,src,ipv4_dst,ipv4_src):
+    def add_flow(self, datapath, in_port, actions, dst,src,ipv4_dst=None,ipv4_src=None):
         ofproto = datapath.ofproto
 
         match = datapath.ofproto_parser.OFPMatch(
             nw_dst=ipv4_dst, nw_src=ipv4_src,
             in_port=in_port,
             dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src))
-        #match = datapath.ofproto_parser.OFPMatch(in_port=in_port,nw_dst=ipv4_dst)
 
         mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, cookie=0,
@@ -52,31 +50,29 @@ class FatTreeSwitch(app_manager.RyuApp):
         src = eth.src
 
         dpid = datapath.id
+        self.mac_to_port.setdefault(dpid, {})
       
         # ignore lddp or ipv6 packets
         if eth.ethertype == ether_types.ETH_TYPE_LLDP or ip6_pkt is not None:#,ether_types.ETH_TYPE_IPV6):
             return
         
-        # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port.setdefault(dpid, {})
-        self.mac_to_port[dpid][src] = msg.in_port
-
         # DPIDs are in the form ..:00:x:y:z
         x = (dpid >> 16) & 15
         y = (dpid >> 8) & 15
         z = dpid & 15
-        
-        # Dest IP octets
+
+        # collect dest ip octets
         if ip_pkt is not None:
             octets = [int(o) for o in ip_pkt.dst.split('.')]
             print("%02x" % dpid,ip_pkt.dst)
             print(x,y,z,octets)
-
-        # if dest IP is on this switch
-        if dst in self.mac_to_port[dpid] and ip_pkt is not None and x == octets[1] and y == octets[2]:
-        #if ip_pkt is not None and x == octets[1] and y == octets[2]:
-            out_port = octets[-1] - 1
-            print("On this switch","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port,y)
+        
+        if dst in self.mac_to_port[dpid]:
+            if ip_pkt is not None and x == octets[1] and y == octets[2]:
+                out_port = octets[-1] - 1
+                print("On this switch","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port,y)
+            elif eth.ethertype == ether_types.ETH_TYPE_ARP and src in self.mac_to_port[dpid]:
+                out_port = self.mac_to_port[dpid][dst]
 
         # if dest IP is not on this switch
         elif ip_pkt is not None:
@@ -102,17 +98,18 @@ class FatTreeSwitch(app_manager.RyuApp):
                 print("Beam me up","%02x" % dpid,"%s -> %s" % (ip_pkt.src,ip_pkt.dst),out_port)
         else:
             out_port = ofproto.OFPP_FLOOD
+            print("The flood have breached",x,y,z)
+        
+        # learn a mac address to avoid FLOOD next time.
+        self.mac_to_port[dpid][src] = msg.in_port
 
         # install a flow to avoid packet_in next time
         actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
-        if out_port != ofproto.OFPP_FLOOD:
-            if ip_pkt is not None:
-                print(ip_pkt.dst)
-                self.add_flow(datapath, msg.in_port, actions, dst,src,ip_pkt.dst,ip_pkt.src)
-                #self.add_flow(datapath, msg.in_port, actions, dst,src)
-            #else:
-            #    self.add_flow(datapath,msg.in_port,actions,dl_src=haddr_to_bin(src),dl_dst=haddr_to_bin(dst))
-        else: return
+        #if out_port != ofproto.OFPP_FLOOD:
+        #    if ip_pkt is not None:
+        #        self.add_flow(datapath, msg.in_port, actions, dst,src,ip_pkt.dst,ip_pkt.src)
+        #    else:
+        #        self.add_flow(datapath,msg.in_port,actions,dst,src)
 
         # send packet out
         data = None
