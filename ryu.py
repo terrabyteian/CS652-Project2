@@ -72,10 +72,7 @@ class FatTreeSwitch(app_manager.RyuApp):
         #if dst in self.mac_to_port[dpid]:
         if (ip_pkt is not None or arp_pkt is not None) and x == octets[1] and y == octets[2]:
              out_port = octets[-1] - 1
-             print(octets)
-        #else:
-        #    out_port = self.mac_to_port[dpid][dst]
-
+        
         # if dest IP is not on this switch
         elif ip_pkt is not None or arp_pkt is not None:
 
