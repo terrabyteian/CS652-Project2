@@ -47,3 +47,4 @@ During the first pingall, the controller distributes ARP packets between each ho
 
 During the second pingall, since the flow table entries have already been created, the controller performs no packet_in requests and allows the switches to automatically direct the packets based on the flow table entries. All subsequent packets sent between hosts will follow these flows. 
 
+![Alt text](images/screenshot.png?raw=true "Screenshot")
