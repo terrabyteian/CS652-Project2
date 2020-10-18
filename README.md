@@ -43,7 +43,7 @@ ryu-manager ryu.py
 
 The following screenshot shows an example of a Fat Tree topo being generated using k = 4. 
 
-During the first pingall, the controller distributes ARP packets between each host and then directs the flow of the packets, adding flow table entries as it goes.
+During the first pingall, the controller distributes ARP packets between each host and then directs the flow of the ping packets, adding flow table entries as it goes.
 
 During the second pingall, since the flow table entries have already been created, the controller performs no packet_in requests and allows the switches to automatically direct the packets based on the flow table entries. All subsequent packets sent between hosts will follow these flows. 
 
