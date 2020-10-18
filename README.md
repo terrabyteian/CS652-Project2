@@ -41,7 +41,7 @@ ryu-manager ryu.py
 
 ## Execution Example
 
-The following screenshot shows an example of a Fat Tree topo being generated using k = 4. 
+The following screenshot shows an example of a Fat Tree topo being generated using k = 4. The machine being uses is an Ubuntu 20.04.1 LTS VM running in Virtualbox with 4 vcpus and 8G memory.
 
 During the first pingall, the controller distributes ARP packets between each host and then directs the flow of the ping packets, adding flow table entries as it goes.
 
